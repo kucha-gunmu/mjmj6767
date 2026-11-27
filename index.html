@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>COSMIX · 余弦概率像素散射</title>
+<title>COSMIX · 混淆图</title>
 <style>
   :root{
     --bg:#0b0d10; --panel:#12161c; --panel-2:#161b22; --line:#232a33;
@@ -67,7 +67,7 @@
 <body>
 <header>
   <h1>COSMIX · 余弦概率像素散射
-    <small>可逆图像混淆 · 余弦曲线概率模型 + Feistel 置换 + 逐像素扩散 · 纯前端</small>
+    <small>可逆图像混淆 · 余弦曲线概率模型 + Feistel 置换 + 逐像素扩散</small>
   </h1>
 </header>
 
@@ -86,7 +86,7 @@
         <input type="number" id="rounds" value="8" min="4" max="32">
       </div>
       <div>
-        <label for="variant">变体（非秘密）</label>
+        <label for="variant">变体</label>
         <input type="text" id="variant" value="default" autocomplete="off">
       </div>
     </div>
@@ -102,7 +102,6 @@
 
     <div id="dlWrap"></div>
     <progress id="prog" class="hidden" max="1" value="0" style="width:100%;margin-top:10px"></progress>
-    <div class="hint">输出始终是 PNG（无损容器），必须走"以文件发送"。即使 PNG 元数据被聊天软件剥掉，本工具照样能还原（默认参数兜底）。原图的 eXIf / iCCP / 文本块等元信息会一并保留。</div>
 
     <h2 style="margin-top:18px">日志</h2>
     <pre id="log">就绪。</pre>
@@ -134,10 +133,10 @@
 <script>
 "use strict";
 /* =====================================================================
- * COSMIX core —— 与 Python 版 cosmix/ 逐位兼容
- *   v2：无口令、无盐。主密钥 = BLAKE2b(固定种子 + 变体名)，算法即全部参数。
+ * COSMIX core
+ *   v2：无口令、无盐。主密钥 = BLAKE2b(固定种子 + 变体名)。
  *   1. SHA-256 / HMAC-SHA256 / PBKDF2（纯 JS，无 secure-context 依赖）
- *   2. scrypt（v2 已不参与，保留为工具函数）
+ *   2. scrypt（v2 已不参与）
  *   3. BLAKE2b（BigInt 实现，供 PRF / 密钥流 / 指纹使用）
  *   4. 余弦概率 Feistel 置换（含 cycle-walking）
  *   5. 逐像素值扩散
@@ -314,7 +313,7 @@ function scrypt(password, salt, N, r, p, dkLen) {
   return pbkdf2HmacSha256(password, B, 1, dkLen);
 }
 
-/* ---------- 3. BLAKE2b（BigInt 实现，与 hashlib.blake2b 逐位一致） ---------- */
+/* ---------- 3. BLAKE2b（BigInt 实现） ---------- */
 const B2_M64 = (1n << 64n) - 1n;
 function b2rot(x, n) { return ((x >> BigInt(n)) | (x << BigInt(64 - n))) & B2_M64; }
 const B2_IV = [
@@ -402,12 +401,12 @@ function blake2b(data, key, outLen) {
   return out;
 }
 
-/* ---------- 4. 密钥派生（与 Python kdf.py 一致） ---------- */
+/* ---------- 4. 密钥派生 ---------- */
 const MAGIC = "COSMIX", VERSION = 3, SUM_BYTES = 16, DEFAULT_ROUNDS = 8, DEFAULT_VARIANT = "default";
 const MASTER_SEED = "COSMIX|v3|cosine-scatter|master";
 const MASTER_SEED_V2 = "COSMIX|v2|cosine-scatter|master";
 
-/* 无口令：主密钥只由固定种子 + 变体名派生（与 Python kdf.py 一致）。
+/* 主密钥由固定种子 + 变体名派生。
    version=2 时走旧种子，仅用于还原 v2 存量文件。 */
 function deriveMaster(variant, version) {
   const v = (variant == null || variant === "") ? DEFAULT_VARIANT : String(variant);
@@ -419,7 +418,7 @@ function subkey(master, label) {
   return hmacSha256(master, concatBytes(utf8("COSMIX/subkey/"), utf8(label)));
 }
 /* 像素指纹：用于还原后的自检。 */
-const SUM_LIMIT = 8 << 20;   // 超大图跳过指纹：BigInt 版 BLAKE2b 跑 190MB 太慢，宁可不校验
+const SUM_LIMIT = 8 << 20;   // 超过阈值的图跳过指纹计算
 function sumOf(rgba) {
   if (rgba.length > SUM_LIMIT) return "";
   return hexOf(blake2b(rgba, null, 32).slice(0, SUM_BYTES));
@@ -487,8 +486,7 @@ function permutationParams(n) {
   return { half, m: Math.pow(2, half) };
 }
 
-/* 只建轮表（规模 2^half，几千项），不再物化整张置换表：
-   48MP 图若存 perm+scatter 两张 Int32Array 就是 390MB，浏览器直接崩。 */
+/* 只建轮表（规模 2^half），不物化整张置换表。 */
 function permutationEngine(master, n, rounds) {
   const keys = buildPermutationKeys(master, rounds);
   const { m } = permutationParams(n);
@@ -511,7 +509,7 @@ function cosineScatter(master, n, rounds) {
 /* ---------- 6. 值扩散 / 密钥流 ---------- */
 const GOLD32 = 0x9E3779B1, MIX_A32 = 0x7FEB352D, MIX_B32 = 0x846CA68B;
 
-/* lowbias32：32 位低位偏置消除器，纯 imul，numpy 与 JS 都能向量化。 */
+/* lowbias32：32 位低位偏置消除器。 */
 function lowbias32(x) {
   x = (x ^ (x >>> 16)) >>> 0;
   x = Math.imul(x, MIX_A32) >>> 0;
@@ -525,7 +523,7 @@ function streamWord(key, i) {
   const s = Math.imul((i + 1) | 0, GOLD32) >>> 0;
   return lowbias32((s ^ k0) >>> 0);
 }
-/* 小端展开的长度为 length 的密钥流，带字节偏移（与 Python stream.keystream 一致）。 */
+/* 小端展开的长度为 length 的密钥流，带字节偏移。 */
 function keystream(key, length, offset) {
   offset = offset || 0;
   const out = new Uint8Array(length);
@@ -750,8 +748,7 @@ function diffusionKeys(master, n, width) {
   return { rot, ks };
 }
 
-/* 分块流水线：不物化整图置换表，48MP 图也只多一个输出缓冲，
-   并且每块让出一次事件循环，界面进度条能动、不会假死。 */
+/* 分块流水线：每块处理 CHUNK_PX 像素，分块让出事件循环。 */
 const CHUNK_PX = 1 << 16;
 const nextTick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -766,7 +763,7 @@ async function mixImage(rgba, w, h, opts) {
   const perm = permutationEngine(master, n, rounds);
   const diff = diffEngine(master, n, width, false, opts.onProgress);
 
-  const out = new Uint8Array(rgba);   // width=3 时 alpha 位保持原位（与 Python 一致）
+  const out = new Uint8Array(rgba);   // width=3 时 alpha 位保持原位
   const onProgress = opts.onProgress || null;
   for (let s = 0; s < n; s += CHUNK_PX) {
     const count = Math.min(CHUNK_PX, n - s);
@@ -774,7 +771,7 @@ async function mixImage(rgba, w, h, opts) {
     for (let k = 0; k < count; k++) {
       const j = s + k;
       const r = rot[k] % width, o = j * 4, kb = k * width;
-      /* Python 口径：mixed[t] = V[P[t]]，所以源像素 j 写到 q(j) 槽位 */
+      /* mixed[t] = V[P[t]]：源像素 j 写到 q(j) 槽位 */
       const d = feistelDecrypt(j, perm.tables, perm.m, perm.n) * 4;
       for (let c = 0; c < width; c++) out[d + c] = rgba[o + ((c + r) % width)] ^ ks[kb + c];
     }
@@ -798,9 +795,9 @@ async function restoreImage(rgba, w, h, opts) {
   const header = opts.header || null;
 
   if (header && header.salt)
-    throw new Error("这是需要口令的旧版 v1 文件，请用备份版本（cosmix_v1_passphrase）还原");
+    throw new Error("这是需要口令的旧版 v1 文件，不支持在此还原");
 
-  // 元数据被剥掉也能还原：尺寸取自图片本身，参数退回默认值
+  // 尺寸取自图片本身，参数退回默认值
   const rounds = opts.rounds || (header && header.rounds) || DEFAULT_ROUNDS;
   const variant = opts.variant || (header && header.variant) || DEFAULT_VARIANT;
   const mixAlpha = opts.mixAlpha != null ? !!opts.mixAlpha : !!(header && header.alpha === "mix");
@@ -821,7 +818,7 @@ async function restoreImage(rgba, w, h, opts) {
     const { rot, ks } = diff.chunk(s, count);
     for (let k = 0; k < count; k++) {
       const i = s + k;
-      /* 与 Python 一致：V[j] = mixed[q(j)]，反扩散作用在源下标 j 上 */
+      /* V[j] = mixed[q(j)]：反扩散作用在源下标 j 上 */
       const j = feistelDecrypt(i, perm.tables, perm.m, perm.n);
       const r = rot[k] % width, o = j * 4, d = i * 4, kb = k * width;
       for (let c = 0; c < width; c++) out[d + ((c + r) % width)] = rgba[o + c] ^ ks[kb + c];
@@ -988,7 +985,7 @@ if (typeof document !== "undefined") {
       showMetrics([["提示", "执行混淆或还原后显示"] ]);
       $("header").value = state.header ? JSON.stringify(state.header) : "";
       if (state.header && state.header.salt) {
-        log("这是需要口令的旧版 v1 文件，请用备份版本还原。", "err");
+        log("这是需要口令的旧版 v1 文件，不支持在此还原。", "err");
       } else if (state.header) {
         $("variant").value = state.header.variant || DEFAULT_VARIANT;
         if (state.header.rounds) $("rounds").value = state.header.rounds;
@@ -1003,7 +1000,7 @@ if (typeof document !== "undefined") {
     refreshButtons();
   };
 
-  /* 事件绑定：单个元素缺失不能拖垮其余监听（v2 曾因 $("pass") 为 null 导致全部按钮失灵） */
+  /* 事件绑定：单个元素缺失不影响其余监听 */
   const bind = (id, ev, fn) => {
     const el = $(id);
     if (!el) { console.error("缺少元素：" + id); return; }
@@ -1057,7 +1054,7 @@ if (typeof document !== "undefined") {
       showMetrics(analyse(state.rgba, res.rgba, state.w, state.h));
       $("header").value = JSON.stringify(res.header, null, 2);
       state.result = { png, header: res.header, rgba: res.rgba };
-      // 混淆后把结果当作当前图像，便于紧接着点"还原"验证可逆性
+      // 混淆后把结果设为当前图像
       state.rgba = res.rgba; state.header = res.header; state.texts = { cosmix: packHeader(res.header) };
       const blob = new Blob([png], { type: "image/png" });
       const url = URL.createObjectURL(blob);
