@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>COSMIX · 余弦概率像素散射</title>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#12161c; --panel-2:#161b22; --line:#232a33;
+    --fg:#e6edf3; --dim:#8b949e; --accent:#57d1c9; --accent-2:#7aa2f7;
+    --warn:#f0a35e; --err:#f07171; --ok:#7ee787;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#16202b,var(--bg));
+       color:var(--fg);font:14px/1.6 "Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  header{padding:26px 22px 10px;max-width:1180px;margin:0 auto}
+  h1{margin:0;font-size:20px;letter-spacing:.5px;font-weight:650}
+  h1 small{display:block;margin-top:6px;font-size:12px;color:var(--dim);font-weight:400;letter-spacing:0}
+  main{max-width:1180px;margin:0 auto;padding:6px 22px 60px;display:grid;gap:16px;
+       grid-template-columns:minmax(300px,380px) 1fr}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  .panel{background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line);
+         border-radius:14px;padding:16px}
+  .panel h2{margin:0 0 12px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input[type=text],input[type=password],input[type=number],select,textarea{
+    width:100%;background:#0d1117;color:var(--fg);border:1px solid var(--line);border-radius:8px;
+    padding:9px 10px;font:inherit;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent-2);box-shadow:0 0 0 3px #7aa2f722}
+  textarea{resize:vertical;min-height:52px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim)}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+  button{cursor:pointer;border:1px solid var(--line);border-radius:9px;padding:10px 14px;font:inherit;
+         background:#1a2028;color:var(--fg);transition:.15s}
+  button:hover{border-color:#2f3945;background:#1f262f}
+  button.primary{background:linear-gradient(180deg,#1d4b48,#14312f);border-color:#2b6a65;color:#c9fff8}
+  button.primary:hover{background:linear-gradient(180deg,#215a56,#163a37)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .btns{display:flex;gap:10px;margin-top:14px}
+  .btns button{flex:1}
+  .drop{border:1px dashed #2c3540;border-radius:12px;padding:18px;text-align:center;color:var(--dim);
+        cursor:pointer;transition:.15s;background:#0d1117}
+  .drop:hover,.drop.hot{border-color:var(--accent);color:var(--fg);background:#0f1720}
+  .drop b{color:var(--fg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:700px){.grid2{grid-template-columns:1fr}}
+  figure{margin:0;background:#0d1117;border:1px solid var(--line);border-radius:12px;padding:10px;overflow:hidden}
+  figure canvas{display:block;width:100%;height:auto;image-rendering:pixelated;border-radius:6px;background:#000}
+  figcaption{font-size:12px;color:var(--dim);margin-top:8px;display:flex;justify-content:space-between;gap:8px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line);color:var(--dim)}
+  .pill.ok{color:var(--ok);border-color:#2c5138;background:#0f2417}
+  .pill.err{color:var(--err);border-color:#5a2a2a;background:#2a1414}
+  .pill.warn{color:var(--warn);border-color:#5a4020;background:#241a0f}
+  pre#log{margin:12px 0 0;background:#0a0e13;border:1px solid var(--line);border-radius:10px;padding:12px;
+          font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:#a9b6c4;white-space:pre-wrap;
+          max-height:230px;overflow:auto}
+  table.metrics{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  table.metrics td,table.metrics th{border-bottom:1px solid var(--line);padding:5px 4px;text-align:left}
+  table.metrics td:last-child,table.metrics th:last-child{text-align:right;font-family:ui-monospace,monospace}
+  .hint{font-size:11.5px;color:var(--dim);margin-top:8px}
+  a.dl{display:inline-block;margin-top:10px;color:#c9fff8;background:#14312f;border:1px solid #2b6a65;
+       border-radius:9px;padding:9px 14px;text-decoration:none}
+  .hidden{display:none!important}
+  code{background:#0d1117;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11.5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>COSMIX · 余弦概率像素散射
+    <small>可逆图像混淆 · 余弦曲线概率模型 + Feistel 置换 + 逐像素扩散 · 纯前端</small>
+  </h1>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>输入</h2>
+    <div class="drop" id="drop">
+      <div>点击或拖入图片（<b>PNG / JPG / WebP / BMP / GIF 首帧</b>）</div>
+      <div class="hint" id="fileInfo">尚未选择文件</div>
+    </div>
+    <input type="file" id="file" accept="image/png,image/*" class="hidden">
+
+    <div class="row">
+      <div>
+        <label for="rounds">Feistel 轮数</label>
+        <input type="number" id="rounds" value="8" min="4" max="32">
+      </div>
+      <div>
+        <label for="variant">变体（非秘密）</label>
+        <input type="text" id="variant" value="default" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="btns">
+      <button id="btnMix" class="primary" disabled>混淆</button>
+      <button id="btnRestore" disabled>还原</button>
+    </div>
+    <div class="btns">
+      <button id="btnDetect" disabled>读取头信息</button>
+      <button id="btnClear">清空</button>
+    </div>
+
+    <div id="dlWrap"></div>
+    <progress id="prog" class="hidden" max="1" value="0" style="width:100%;margin-top:10px"></progress>
+    <div class="hint">输出始终是 PNG（无损容器），必须走"以文件发送"。即使 PNG 元数据被聊天软件剥掉，本工具照样能还原（默认参数兜底）。原图的 eXIf / iCCP / 文本块等元信息会一并保留。</div>
+
+    <h2 style="margin-top:18px">日志</h2>
+    <pre id="log">就绪。</pre>
+  </section>
+
+  <section class="panel">
+    <h2>预览</h2>
+    <div class="grid2">
+      <figure>
+        <canvas id="cvA"></canvas>
+        <figcaption><span>原图 / 输入</span><span class="pill" id="tagA">—</span></figcaption>
+      </figure>
+      <figure>
+        <canvas id="cvB"></canvas>
+        <figcaption><span>混淆结果</span><span class="pill" id="tagB">—</span></figcaption>
+      </figure>
+    </div>
+    <h2 style="margin-top:18px">统计特征</h2>
+    <table class="metrics" id="metrics">
+      <tr><th>指标</th><th>值</th></tr>
+      <tr><td colspan="2" style="color:var(--dim)">选择图片并执行后显示</td></tr>
+    </table>
+    <h2 style="margin-top:18px">头信息</h2>
+    <textarea id="header" spellcheck="false" placeholder="混淆后写入 PNG 的 cosmix 文本块（头信息）"></textarea>
+  </section>
+
+</main>
+
+<script>
+"use strict";
+/* =====================================================================
+ * COSMIX core —— 与 Python 版 cosmix/ 逐位兼容
+ *   v2：无口令、无盐。主密钥 = BLAKE2b(固定种子 + 变体名)，算法即全部参数。
+ *   1. SHA-256 / HMAC-SHA256 / PBKDF2（纯 JS，无 secure-context 依赖）
+ *   2. scrypt（v2 已不参与，保留为工具函数）
+ *   3. BLAKE2b（BigInt 实现，供 PRF / 密钥流 / 指纹使用）
+ *   4. 余弦概率 Feistel 置换（含 cycle-walking）
+ *   5. 逐像素值扩散
+ *   6. PNG 解码 / 编码（含 tEXt 头信息）
+ *   7. 编排：mixImage / restoreImage
+ * ===================================================================== */
+
+/* ---------- 工具 ---------- */
+const utf8 = (s) => new TextEncoder().encode(s);
+const hexOf = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+const fromHex = (h) => {
+  const clean = h.replace(/[^0-9a-fA-F]/g, "");
+  if (clean.length % 2) throw new Error("十六进制长度必须为偶数");
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(clean.substr(i * 2, 2), 16);
+  return out;
+};
+const concatBytes = (...parts) => {
+  let len = 0;
+  for (const p of parts) len += p.length;
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const p of parts) { out.set(p, off); off += p.length; }
+  return out;
+};
+const be64 = (v) => {
+  const out = new Uint8Array(8);
+  let x = BigInt(v);
+  for (let i = 7; i >= 0; i--) { out[i] = Number(x & 0xFFn); x >>= 8n; }
+  return out;
+};
+
+/* ---------- 1. SHA-256 ---------- */
+const SHA256_K = new Uint32Array([
+  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+]);
+
+function sha256(data) {
+  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
+                             0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const bitLen = data.length * 8;
+  const padded = new Uint8Array((((data.length + 8) >> 6) + 1) << 6);
+  padded.set(data);
+  padded[data.length] = 0x80;
+  const dv = new DataView(padded.buffer);
+  dv.setUint32(padded.length - 8, Math.floor(bitLen / 4294967296));
+  dv.setUint32(padded.length - 4, bitLen >>> 0);
+
+  const w = new Uint32Array(64);
+  for (let off = 0; off < padded.length; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = ((w[i-15] >>> 7) | (w[i-15] << 25)) ^ ((w[i-15] >>> 18) | (w[i-15] << 14)) ^ (w[i-15] >>> 3);
+      const s1 = ((w[i-2] >>> 17) | (w[i-2] << 15)) ^ ((w[i-2] >>> 19) | (w[i-2] << 13)) ^ (w[i-2] >>> 10);
+      w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+    }
+    let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let i = 0; i < 64; i++) {
+      const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + SHA256_K[i] + w[i]) >>> 0;
+      const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) >>> 0;
+      h = g; g = f; f = e; e = (d + t1) >>> 0;
+      d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+  }
+  const out = new Uint8Array(32);
+  const dvOut = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) dvOut.setUint32(i * 4, H[i]);
+  return out;
+}
+
+function hmacSha256(key, msg) {
+  let k = key.length > 64 ? sha256(key) : key;
+  const block = new Uint8Array(64);
+  block.set(k);
+  const ipad = new Uint8Array(64), opad = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) { ipad[i] = block[i] ^ 0x36; opad[i] = block[i] ^ 0x5c; }
+  return sha256(concatBytes(opad, sha256(concatBytes(ipad, msg))));
+}
+
+function pbkdf2HmacSha256(password, salt, iterations, dkLen) {
+  const out = new Uint8Array(dkLen);
+  let offset = 0, blockIdx = 1;
+  while (offset < dkLen) {
+    const idx = new Uint8Array([ (blockIdx >>> 24) & 0xFF, (blockIdx >>> 16) & 0xFF,
+                                 (blockIdx >>> 8) & 0xFF, blockIdx & 0xFF ]);
+    let u = hmacSha256(password, concatBytes(salt, idx));
+    const acc = new Uint8Array(u);
+    for (let i = 1; i < iterations; i++) {
+      u = hmacSha256(password, u);
+      for (let j = 0; j < 32; j++) acc[j] ^= u[j];
+    }
+    const take = Math.min(32, dkLen - offset);
+    out.set(acc.subarray(0, take), offset);
+    offset += take; blockIdx++;
+  }
+  return out;
+}
+
+/* ---------- 2. scrypt ---------- */
+const SCRYPT_N = 16384, SCRYPT_R = 8, SCRYPT_P = 1;
+
+function rotl32(a, b) { return (a << b) | (a >>> (32 - b)); }
+
+function salsa208(X) {
+  const x = new Int32Array(16);
+  x.set(X);
+  for (let i = 0; i < 8; i += 2) {
+    x[ 4] ^= rotl32(x[ 0] + x[12], 7); x[ 8] ^= rotl32(x[ 4] + x[ 0], 9);
+    x[12] ^= rotl32(x[ 8] + x[ 4],13); x[ 0] ^= rotl32(x[12] + x[ 8],18);
+    x[ 9] ^= rotl32(x[ 5] + x[ 1], 7); x[13] ^= rotl32(x[ 9] + x[ 5], 9);
+    x[ 1] ^= rotl32(x[13] + x[ 9],13); x[ 5] ^= rotl32(x[ 1] + x[13],18);
+    x[14] ^= rotl32(x[10] + x[ 6], 7); x[ 2] ^= rotl32(x[14] + x[10], 9);
+    x[ 6] ^= rotl32(x[ 2] + x[14],13); x[10] ^= rotl32(x[ 6] + x[ 2],18);
+    x[ 3] ^= rotl32(x[15] + x[11], 7); x[ 7] ^= rotl32(x[ 3] + x[15], 9);
+    x[11] ^= rotl32(x[ 7] + x[ 3],13); x[15] ^= rotl32(x[11] + x[ 7],18);
+
+    x[ 1] ^= rotl32(x[ 0] + x[ 3], 7); x[ 2] ^= rotl32(x[ 1] + x[ 0], 9);
+    x[ 3] ^= rotl32(x[ 2] + x[ 1],13); x[ 0] ^= rotl32(x[ 3] + x[ 2],18);
+    x[ 6] ^= rotl32(x[ 5] + x[ 4], 7); x[ 7] ^= rotl32(x[ 6] + x[ 5], 9);
+    x[ 4] ^= rotl32(x[ 7] + x[ 6],13); x[ 5] ^= rotl32(x[ 4] + x[ 7],18);
+    x[11] ^= rotl32(x[10] + x[ 9], 7); x[ 8] ^= rotl32(x[11] + x[10], 9);
+    x[ 9] ^= rotl32(x[ 8] + x[11],13); x[10] ^= rotl32(x[ 9] + x[ 8],18);
+    x[12] ^= rotl32(x[15] + x[14], 7); x[13] ^= rotl32(x[12] + x[15], 9);
+    x[14] ^= rotl32(x[13] + x[12],13); x[15] ^= rotl32(x[14] + x[13],18);
+  }
+  for (let i = 0; i < 16; i++) X[i] = (X[i] + x[i]) | 0;
+}
+
+function scryptBlockMix(B, r) {
+  const X = new Int32Array(16);
+  X.set(B.subarray((2 * r - 1) * 16, 2 * r * 16));
+  const Y = new Int32Array(32 * r);
+  for (let i = 0; i < 2 * r; i++) {
+    for (let j = 0; j < 16; j++) X[j] ^= B[i * 16 + j];
+    salsa208(X);
+    Y.set(X, i * 16);
+  }
+  for (let i = 0; i < r; i++) B.set(Y.subarray(i * 32, i * 32 + 16), i * 16);
+  for (let i = 0; i < r; i++) B.set(Y.subarray(i * 32 + 16, i * 32 + 32), (r + i) * 16);
+}
+
+function scryptSmix(blockBytes, r, N) {
+  const words = 32 * r;
+  const B = new Int32Array(words);
+  const dv = new DataView(blockBytes.buffer, blockBytes.byteOffset, blockBytes.byteLength);
+  for (let i = 0; i < words; i++) B[i] = dv.getInt32(i * 4, true);
+  const V = new Int32Array(words * N);
+  for (let i = 0; i < N; i++) { V.set(B, i * words); scryptBlockMix(B, r); }
+  for (let i = 0; i < N; i++) {
+    const j = (B[(2 * r - 1) * 16] & (N - 1)) >>> 0;
+    const off = j * words;
+    for (let k = 0; k < words; k++) B[k] ^= V[off + k];
+    scryptBlockMix(B, r);
+  }
+  for (let i = 0; i < words; i++) dv.setInt32(i * 4, B[i], true);
+}
+
+function scrypt(password, salt, N, r, p, dkLen) {
+  const B = pbkdf2HmacSha256(password, salt, 1, p * 128 * r);
+  for (let i = 0; i < p; i++) scryptSmix(B.subarray(i * 128 * r, (i + 1) * 128 * r), r, N);
+  return pbkdf2HmacSha256(password, B, 1, dkLen);
+}
+
+/* ---------- 3. BLAKE2b（BigInt 实现，与 hashlib.blake2b 逐位一致） ---------- */
+const B2_M64 = (1n << 64n) - 1n;
+function b2rot(x, n) { return ((x >> BigInt(n)) | (x << BigInt(64 - n))) & B2_M64; }
+const B2_IV = [
+  0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn, 0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
+  0x510e527fade682d1n, 0x9b05688c2b3e6c1fn, 0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n,
+];
+const B2_SIGMA = [
+  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+  [14,10,4,8,9,15,13,6,1,12,0,2,11,7,5,3],
+  [11,8,12,0,5,2,15,13,10,14,3,6,7,1,9,4],
+  [7,9,3,1,13,12,11,14,2,6,5,10,4,0,15,8],
+  [9,0,5,7,2,4,10,15,14,1,11,12,6,8,3,13],
+  [2,12,6,10,0,11,8,3,4,13,7,5,15,14,1,9],
+  [12,5,1,15,14,13,4,10,0,7,6,3,9,2,8,11],
+  [13,11,7,14,12,1,3,9,5,0,15,4,8,6,2,10],
+  [6,15,14,9,11,3,0,8,12,2,13,7,1,4,10,5],
+  [10,2,8,4,7,6,1,5,15,11,9,14,3,12,13,0],
+];
+
+function b2g(v, a, b, c, d, x, y) {
+  v[a] = (v[a] + v[b] + x) & B2_M64; v[d] = b2rot(v[d] ^ v[a], 32);
+  v[c] = (v[c] + v[d]) & B2_M64;     v[b] = b2rot(v[b] ^ v[c], 24);
+  v[a] = (v[a] + v[b] + y) & B2_M64; v[d] = b2rot(v[d] ^ v[a], 16);
+  v[c] = (v[c] + v[d]) & B2_M64;     v[b] = b2rot(v[b] ^ v[c], 63);
+}
+
+/* 压缩函数：block 128 字节（从 off 起），t = 已处理字节总数，last 表示最后一块 */
+function b2compress(h, block, off, t, last) {
+  const m = new Array(16);
+  for (let i = 0; i < 16; i++) {
+    const p = off + i * 8;
+    let w = 0n;
+    for (let j = 7; j >= 0; j--) w = (w << 8n) | BigInt(block[p + j]);
+    m[i] = w;
+  }
+  const v = h.concat(B2_IV);
+  v[12] ^= BigInt(t);
+  v[13] ^= BigInt(Math.floor(t / 4294967296));
+  if (last) v[14] ^= B2_M64;
+  for (let r = 0; r < 12; r++) {
+    const s = B2_SIGMA[r % 10];
+    b2g(v, 0, 4,  8, 12, m[s[0]], m[s[1]]);
+    b2g(v, 1, 5,  9, 13, m[s[2]], m[s[3]]);
+    b2g(v, 2, 6, 10, 14, m[s[4]], m[s[5]]);
+    b2g(v, 3, 7, 11, 15, m[s[6]], m[s[7]]);
+    b2g(v, 0, 5, 10, 15, m[s[8]], m[s[9]]);
+    b2g(v, 1, 6, 11, 12, m[s[10]], m[s[11]]);
+    b2g(v, 2, 7,  8, 13, m[s[12]], m[s[13]]);
+    b2g(v, 3, 4,  9, 14, m[s[14]], m[s[15]]);
+  }
+  for (let i = 0; i < 8; i++) h[i] ^= v[i] ^ v[i + 8];
+}
+
+function blake2b(data, key, outLen) {
+  const kl = key ? key.length : 0;
+  const h = B2_IV.slice();
+  h[0] ^= 0x01010000n ^ BigInt(kl << 8) ^ BigInt(outLen);
+  let t = 0;
+  const blk = new Uint8Array(128);
+  if (kl) {
+    blk.set(key, 0);
+    t = 128;
+    b2compress(h, blk, 0, t, data.length === 0);
+  }
+  if (data.length > 0) {
+    let off = 0;
+    while (data.length - off > 128) {
+      t += 128;
+      b2compress(h, data, off, t, false);
+      off += 128;
+    }
+    const rem = data.length - off;
+    blk.fill(0);
+    blk.set(data.subarray(off, off + rem), 0);
+    t += rem;
+    b2compress(h, blk, 0, t, true);
+  } else if (!kl) {
+    b2compress(h, blk, 0, 0, true);
+  }
+  const out = new Uint8Array(outLen);
+  for (let w = 0; w < outLen / 8; w++) {
+    let x = h[w];
+    for (let b = 0; b < 8; b++) { out[w * 8 + b] = Number(x & 0xFFn); x >>= 8n; }
+  }
+  return out;
+}
+
+/* ---------- 4. 密钥派生（与 Python kdf.py 一致） ---------- */
+const MAGIC = "COSMIX", VERSION = 3, SUM_BYTES = 16, DEFAULT_ROUNDS = 8, DEFAULT_VARIANT = "default";
+const MASTER_SEED = "COSMIX|v3|cosine-scatter|master";
+const MASTER_SEED_V2 = "COSMIX|v2|cosine-scatter|master";
+
+/* 无口令：主密钥只由固定种子 + 变体名派生（与 Python kdf.py 一致）。
+   version=2 时走旧种子，仅用于还原 v2 存量文件。 */
+function deriveMaster(variant, version) {
+  const v = (variant == null || variant === "") ? DEFAULT_VARIANT : String(variant);
+  if (utf8(v).length > 64) throw new Error("变体名过长（上限 64 字节）");
+  const seed = (version === 2) ? MASTER_SEED_V2 : MASTER_SEED;
+  return blake2b(utf8(seed + "|" + v), null, 64);
+}
+function subkey(master, label) {
+  return hmacSha256(master, concatBytes(utf8("COSMIX/subkey/"), utf8(label)));
+}
+/* 像素指纹：用于还原后的自检。 */
+const SUM_LIMIT = 8 << 20;   // 超大图跳过指纹：BigInt 版 BLAKE2b 跑 190MB 太慢，宁可不校验
+function sumOf(rgba) {
+  if (rgba.length > SUM_LIMIT) return "";
+  return hexOf(blake2b(rgba, null, 32).slice(0, SUM_BYTES));
+}
+
+/* ---------- 5. 余弦概率 Feistel 置换 ---------- */
+function cosineWeight(t, phase) {
+  return 0.5 * (1.0 + Math.cos(2.0 * Math.PI * (t + phase)));
+}
+
+function buildPermutationKeys(master, rounds) {
+  const phaseRaw = blake2b(be64(0), subkey(master, "perm/phase"), 8);
+  const phaseHi = ((phaseRaw[0] << 24) | (phaseRaw[1] << 16) | (phaseRaw[2] << 8) | phaseRaw[3]) >>> 0;
+  const phaseLo = ((phaseRaw[4] << 24) | (phaseRaw[5] << 16) | (phaseRaw[6] << 8) | phaseRaw[7]) >>> 0;
+  const global = (phaseHi * 4294967296 + phaseLo) / 18446744073709551616;
+  const tables = [];
+  for (let r = 0; r < rounds; r++) tables.push([subkey(master, "perm/round/" + String(r).padStart(2, "0")), global]);
+  return tables;
+}
+
+function makeRoundTable(key, global, m) {
+  const tab = new Int32Array(m);
+  for (let u = 0; u < m; u++) {
+    const raw = blake2b(be64(u), key, 8);
+    const hi = ((raw[0] << 24) | (raw[1] << 16) | (raw[2] << 8) | raw[3]) >>> 0;
+    const lo = ((raw[4] << 24) | (raw[5] << 16) | (raw[6] << 8) | raw[7]) >>> 0;
+    const base = lo & (m - 1);
+    const local = ((lo >>> 11) & 0x1FFFFF) / 2097152;
+    const w = cosineWeight(u / m, local + global);
+    tab[u] = (base + Math.floor(m * w)) % m;
+  }
+  return tab;
+}
+
+function feistelEncrypt(v, tables, m, n) {
+  for (let guard = 0; guard < 4096; guard++) {
+    let L = Math.floor(v / m), R = v - L * m;
+    for (let r = 0; r < tables.length; r++) {
+      const nR = (L ^ tables[r][R]) >>> 0;
+      L = R; R = nR;
+    }
+    v = L * m + R;
+    if (v < n) return v;
+  }
+  throw new Error("cycle-walking 未收敛");
+}
+function feistelDecrypt(v, tables, m, n) {
+  for (let guard = 0; guard < 4096; guard++) {
+    let L = Math.floor(v / m), R = v - L * m;
+    for (let r = tables.length - 1; r >= 0; r--) {
+      const nL = (R ^ tables[r][L]) >>> 0;
+      R = L; L = nL;
+    }
+    v = L * m + R;
+    if (v < n) return v;
+  }
+  throw new Error("cycle-walking 未收敛");
+}
+
+function permutationParams(n) {
+  let bits = Math.max(4, Math.floor(Math.log2(Math.max(2, n - 1))) + 1);
+  while ((1 << bits) < n) bits++;
+  if (bits % 2) bits++;
+  const half = bits / 2;
+  return { half, m: Math.pow(2, half) };
+}
+
+/* 只建轮表（规模 2^half，几千项），不再物化整张置换表：
+   48MP 图若存 perm+scatter 两张 Int32Array 就是 390MB，浏览器直接崩。 */
+function permutationEngine(master, n, rounds) {
+  const keys = buildPermutationKeys(master, rounds);
+  const { m } = permutationParams(n);
+  const tables = keys.map(([key, global]) => makeRoundTable(key, global, m));
+  return { tables, m, n };
+}
+function cosinePermutation(master, n, rounds) {
+  const { tables, m } = permutationEngine(master, n, rounds);
+  const perm = new Int32Array(n);
+  for (let i = 0; i < n; i++) perm[i] = feistelEncrypt(i, tables, m, n);
+  return perm;
+}
+function cosineScatter(master, n, rounds) {
+  const { tables, m } = permutationEngine(master, n, rounds);
+  const inv = new Int32Array(n);
+  for (let i = 0; i < n; i++) inv[i] = feistelDecrypt(i, tables, m, n);
+  return inv;
+}
+
+/* ---------- 6. 值扩散 / 密钥流 ---------- */
+const GOLD32 = 0x9E3779B1, MIX_A32 = 0x7FEB352D, MIX_B32 = 0x846CA68B;
+
+/* lowbias32：32 位低位偏置消除器，纯 imul，numpy 与 JS 都能向量化。 */
+function lowbias32(x) {
+  x = (x ^ (x >>> 16)) >>> 0;
+  x = Math.imul(x, MIX_A32) >>> 0;
+  x = (x ^ (x >>> 15)) >>> 0;
+  x = Math.imul(x, MIX_B32) >>> 0;
+  return (x ^ (x >>> 16)) >>> 0;
+}
+/* 第 i 个 32 位流字（i 为绝对下标，从 0 开始）。 */
+function streamWord(key, i) {
+  const k0 = (key[0] | (key[1] << 8) | (key[2] << 16) | (key[3] << 24)) >>> 0;
+  const s = Math.imul((i + 1) | 0, GOLD32) >>> 0;
+  return lowbias32((s ^ k0) >>> 0);
+}
+/* 小端展开的长度为 length 的密钥流，带字节偏移（与 Python stream.keystream 一致）。 */
+function keystream(key, length, offset) {
+  offset = offset || 0;
+  const out = new Uint8Array(length);
+  if (length <= 0) return out;
+  const skip = offset % 4, base = Math.floor(offset / 4);
+  const words = Math.ceil((skip + length) / 4);
+  let o = 0;
+  for (let k = 0; k < words; k++) {
+    const w = streamWord(key, base + k);
+    for (let b = 0; b < 4; b++) {
+      const idx = k * 4 + b;
+      if (idx < skip) continue;
+      if (o >= length) break;
+      out[o++] = (w >>> (8 * b)) & 0xFF;
+    }
+  }
+  return out;
+}
+/* v2 遗留：BLAKE2b 计数器模式，只在还原 v2 文件时使用。 */
+function keystreamV2(key, length) {
+  const out = new Uint8Array(length);
+  const ctr = new Uint8Array(8);
+  let off = 0, c = 0;
+  while (off < length) {
+    let x = c;
+    for (let i = 7; i >= 0; i--) { ctr[i] = x & 0xFF; x = Math.floor(x / 256); }
+    const block = blake2b(ctr, key, 64);
+    const take = Math.min(64, length - off);
+    out.set(block.subarray(0, take), off);
+    off += take; c++;
+  }
+  return out;
+}
+
+/* 扩散参数：每块（连续像素段）一次，避开整图的大数组。 */
+function diffEngine(master, n, width, legacy, onProgress) {
+  const rotKey = subkey(master, "diff/rotate");
+  const xorKey = subkey(master, "diff/xor");
+  if (!legacy) {
+    return {
+      legacy: false, width, n,
+      chunk(start, count) {
+        const rot = keystream(rotKey, count, start);
+        const ks = keystream(xorKey, count * width, start * width);
+        return { rot, ks };
+      },
+    };
+  }
+  // v2：一次性整图密钥流（老文件都很小），偏移从 0 开始
+  const rotFull = keystreamV2(rotKey, n);
+  const ksFull = keystreamV2(xorKey, n * width);
+  return {
+    legacy: true, width, n,
+    chunk(start, count) {
+      const rot = rotFull.subarray(start, start + count);
+      const ks = ksFull.subarray(start * width, (start + count) * width);
+      return { rot, ks };
+    },
+  };
+}
+
+/* ---------- 7. PNG ---------- */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+async function inflateZlib(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function deflateZlib(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function readU32(b, o) { return ((b[o] << 24) | (b[o+1] << 16) | (b[o+2] << 8) | b[o+3]) >>> 0; }
+function asciiOf(b, o, len) { let s = ""; for (let i = 0; i < len; i++) s += String.fromCharCode(b[o + i]); return s; }
+function utf8Of(b, o, len) { return new TextDecoder("utf-8").decode(b.subarray(o, o + len)); }
+
+async function decodePNG(bytes) {
+  const sig = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+  for (let i = 0; i < 8; i++) if (bytes[i] !== sig[i]) throw new Error("不是 PNG 文件（签名不匹配）");
+
+  let off = 8, ihdr = null, plte = null, trns = null;
+  const idat = [], texts = {}, extras = [];
+  while (off + 12 <= bytes.length) {
+    const len = readU32(bytes, off);
+    const type = asciiOf(bytes, off + 4, 4);
+    const data = bytes.subarray(off + 8, off + 8 + len);
+    if (type === "IHDR") {
+      ihdr = { w: readU32(data, 0), h: readU32(data, 4), depth: data[8], color: data[9], interlace: data[12] };
+    } else if (type === "PLTE") plte = data;
+    else if (type === "tRNS") trns = data;
+    else if (type === "IDAT") idat.push(data);
+    else if (type === "tEXt") {
+      const z = data.indexOf(0);
+      const key = asciiOf(data, 0, z);
+      texts[key] = utf8Of(data, z + 1, data.length - z - 1);
+      if (key.indexOf("cosmix") !== 0) extras.push({ type, data });
+    } else if (type === "IEND") break;
+    else if (type !== "IHDR" && type !== "PLTE" && type !== "tRNS" && type !== "IDAT") extras.push({ type, data });
+    off += 12 + len;
+  }
+  if (!ihdr) throw new Error("PNG 缺少 IHDR");
+  if (ihdr.depth !== 8) throw new Error("仅支持 8-bit 位深的 PNG（当前 " + ihdr.depth + "-bit）");
+  if (ihdr.interlace) throw new Error("不支持隔行扫描（Adam7）PNG，请另存为非隔行");
+
+  const { w, h, color } = ihdr;
+  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[color];
+  if (!channels) throw new Error("不支持的 PNG 颜色类型：" + color);
+
+  let raw = new Uint8Array(0);
+  let acc = 0;
+  for (const part of idat) acc += part.length;
+  const joined = new Uint8Array(acc);
+  let p = 0;
+  for (const part of idat) { joined.set(part, p); p += part.length; }
+  raw = await inflateZlib(joined);
+
+  const stride = w * channels;
+  const img = new Uint8Array(h * stride);
+  let pos = 0;
+  for (let y = 0; y < h; y++) {
+    const filter = raw[pos++];
+    const row = raw.subarray(pos, pos + stride); pos += stride;
+    const cur = img.subarray(y * stride, (y + 1) * stride);
+    const prev = y > 0 ? img.subarray((y - 1) * stride, y * stride) : null;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= channels ? cur[x - channels] : 0;
+      const b = prev ? prev[x] : 0;
+      const c = prev && x >= channels ? prev[x - channels] : 0;
+      let v = row[x];
+      if (filter === 1) v += a;
+      else if (filter === 2) v += b;
+      else if (filter === 3) v += (a + b) >> 1;
+      else if (filter === 4) {
+        const pp = a + b - c, pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c);
+        v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+      } else if (filter !== 0) throw new Error("未知行过滤器：" + filter);
+      cur[x] = v & 0xFF;
+    }
+  }
+
+  const rgba = new Uint8Array(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    let r = 0, g = 0, b = 0, a = 255;
+    if (color === 0) { r = g = b = img[i]; }
+    else if (color === 2) { r = img[i*3]; g = img[i*3+1]; b = img[i*3+2]; }
+    else if (color === 4) { r = g = b = img[i*2]; a = img[i*2+1]; }
+    else if (color === 6) { r = img[i*4]; g = img[i*4+1]; b = img[i*4+2]; a = img[i*4+3]; }
+    else if (color === 3) {
+      const idx = img[i];
+      if (!plte) throw new Error("调色板 PNG 缺少 PLTE");
+      r = plte[idx*3]; g = plte[idx*3+1]; b = plte[idx*3+2];
+      if (trns && idx < trns.length) a = trns[idx];
+    }
+    rgba[i*4] = r; rgba[i*4+1] = g; rgba[i*4+2] = b; rgba[i*4+3] = a;
+  }
+  return { rgba, w, h, texts, extras };
+}
+
+function pngChunk(type, data) {
+  const out = new Uint8Array(12 + data.length);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, data.length);
+  for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+  out.set(data, 8);
+  dv.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+  return out;
+}
+
+async function encodePNG(rgba, w, h, texts, extras) {
+  const stride = w * 4;
+  const raw = new Uint8Array((stride + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (stride + 1)] = 0;
+    raw.set(rgba.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
+  }
+  const compressed = await deflateZlib(raw);
+
+  const ihdr = new Uint8Array(13);
+  const dv = new DataView(ihdr.buffer);
+  dv.setUint32(0, w); dv.setUint32(4, h);
+  ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+
+  const parts = [new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+                 pngChunk("IHDR", ihdr)];
+  // 原图的辅助块（eXIf / iCCP / sRGB / gAMA / pHYs / 原始 tEXt ...）原样搬过去
+  for (const c of (extras || [])) parts.push(pngChunk(c.type, c.data));
+  for (const [k, v] of Object.entries(texts || {})) {
+    const payload = concatBytes(utf8(k), new Uint8Array([0]), utf8(v));
+    parts.push(pngChunk("tEXt", payload));
+  }
+  parts.push(pngChunk("IDAT", compressed));
+  parts.push(pngChunk("IEND", new Uint8Array(0)));
+  return concatBytes(...parts);
+}
+
+/* ---------- 8. 编排 ---------- */
+const DEFAULT_HEADER = () => ({});
+
+function packHeader(h) {
+  return JSON.stringify({ magic: h.magic, v: h.v, w: h.w, h: h.h, variant: h.variant, rounds: h.rounds,
+                          alpha: h.alpha, sum: h.sum, src_format: h.src_format, meta: h.meta });
+}
+
+/* 兼容旧测试：整图密钥流（大图别用） */
+function diffusionKeys(master, n, width) {
+  const eng = diffEngine(master, n, width, false);
+  const { rot, ks } = eng.chunk(0, n);
+  return { rot, ks };
+}
+
+/* 分块流水线：不物化整图置换表，48MP 图也只多一个输出缓冲，
+   并且每块让出一次事件循环，界面进度条能动、不会假死。 */
+const CHUNK_PX = 1 << 16;
+const nextTick = () => new Promise((r) => setTimeout(r, 0));
+
+async function mixImage(rgba, w, h, opts) {
+  opts = opts || {};
+  const n = w * h;
+  const rounds = opts.rounds || DEFAULT_ROUNDS;
+  const variant = (opts.variant == null || opts.variant === "") ? DEFAULT_VARIANT : String(opts.variant);
+  const mixAlpha = !!opts.mixAlpha;
+  const width = mixAlpha ? 4 : 3;
+  const master = deriveMaster(variant, 3);
+  const perm = permutationEngine(master, n, rounds);
+  const diff = diffEngine(master, n, width, false, opts.onProgress);
+
+  const out = new Uint8Array(rgba);   // width=3 时 alpha 位保持原位（与 Python 一致）
+  const onProgress = opts.onProgress || null;
+  for (let s = 0; s < n; s += CHUNK_PX) {
+    const count = Math.min(CHUNK_PX, n - s);
+    const { rot, ks } = diff.chunk(s, count);
+    for (let k = 0; k < count; k++) {
+      const j = s + k;
+      const r = rot[k] % width, o = j * 4, kb = k * width;
+      /* Python 口径：mixed[t] = V[P[t]]，所以源像素 j 写到 q(j) 槽位 */
+      const d = feistelDecrypt(j, perm.tables, perm.m, perm.n) * 4;
+      for (let c = 0; c < width; c++) out[d + c] = rgba[o + ((c + r) % width)] ^ ks[kb + c];
+    }
+    if (onProgress) onProgress((s + count) / n);
+    if (!opts.noYield) await nextTick();
+  }
+
+  const header = {
+    magic: MAGIC, v: VERSION, w, h, variant, rounds,
+    alpha: mixAlpha ? "mix" : "keep",
+    sum: sumOf(rgba),
+    src_format: opts.srcFormat || "png",
+    meta: opts.meta || [],
+  };
+  return { rgba: out, header };
+}
+
+async function restoreImage(rgba, w, h, opts) {
+  opts = opts || {};
+  const n = w * h;
+  const header = opts.header || null;
+
+  if (header && header.salt)
+    throw new Error("这是需要口令的旧版 v1 文件，请用备份版本（cosmix_v1_passphrase）还原");
+
+  // 元数据被剥掉也能还原：尺寸取自图片本身，参数退回默认值
+  const rounds = opts.rounds || (header && header.rounds) || DEFAULT_ROUNDS;
+  const variant = opts.variant || (header && header.variant) || DEFAULT_VARIANT;
+  const mixAlpha = opts.mixAlpha != null ? !!opts.mixAlpha : !!(header && header.alpha === "mix");
+  const width = mixAlpha ? 4 : 3;
+  const legacy = !!(header && header.v === 2);   // v2 存量文件：老种子 + 老密钥流
+
+  if (header && header.w && (header.w !== w || header.h !== h))
+    throw new Error("图像尺寸与头信息不一致（可能被缩放/裁剪）");
+
+  const master = deriveMaster(variant, legacy ? 2 : 3);
+  const perm = permutationEngine(master, n, rounds);
+  const diff = diffEngine(master, n, width, legacy);
+  const out = new Uint8Array(rgba);
+  const onProgress = opts.onProgress || null;
+
+  for (let s = 0; s < n; s += CHUNK_PX) {
+    const count = Math.min(CHUNK_PX, n - s);
+    const { rot, ks } = diff.chunk(s, count);
+    for (let k = 0; k < count; k++) {
+      const i = s + k;
+      /* 与 Python 一致：V[j] = mixed[q(j)]，反扩散作用在源下标 j 上 */
+      const j = feistelDecrypt(i, perm.tables, perm.m, perm.n);
+      const r = rot[k] % width, o = j * 4, d = i * 4, kb = k * width;
+      for (let c = 0; c < width; c++) out[d + ((c + r) % width)] = rgba[o + c] ^ ks[kb + c];
+    }
+    if (onProgress) onProgress((s + count) / n);
+    if (!opts.noYield) await nextTick();
+  }
+
+  let verified = null;
+  if (opts.verify !== false && header && header.sum) {
+    verified = sumOf(out) === header.sum;
+    if (!verified)
+      throw new Error("还原结果与原图指纹不符：文件像素被改动过（重编码/缩放/裁剪），或轮数/变体不对");
+  }
+  return { rgba: out, verified, fromMetadata: !!header, rounds, variant, legacy };
+}
+
+/* ---------- 9. 指标 ---------- */
+function entropy(chan) {
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < chan.length; i++) hist[chan[i]]++;
+  let H = 0;
+  for (let i = 0; i < 256; i++) {
+    if (!hist[i]) continue;
+    const p = hist[i] / chan.length;
+    H -= p * Math.log2(p);
+  }
+  return H;
+}
+function channelOf(rgba, w, h, c) {
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) out[i] = rgba[i * 4 + c];
+  return out;
+}
+function neighborCorr(chan, w, h) {
+  let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x + 1 < w; x++) {
+    const a = chan[y * w + x], b = chan[y * w + x + 1];
+    n++; sx += a; sy += b; sxx += a * a; syy += b * b; sxy += a * b;
+  }
+  const cov = sxy / n - (sx / n) * (sy / n);
+  const va = sxx / n - (sx / n) ** 2, vb = syy / n - (sy / n) ** 2;
+  return (va <= 1e-12 || vb <= 1e-12) ? 0 : cov / Math.sqrt(va * vb);
+}
+function analyse(A, B, w, h) {
+  const rows = [];
+  let same = 0, mae = 0;
+  for (let i = 0; i < w * h; i++) {
+    let samePx = true;
+    for (let c = 0; c < 3; c++) {
+      const d = Math.abs(A[i * 4 + c] - B[i * 4 + c]);
+      mae += d;
+      if (d) samePx = false;
+    }
+    if (samePx) same++;
+  }
+  const ent = [0, 1, 2].map((c) => entropy(channelOf(B, w, h, c)).toFixed(4)).join(" / ");
+  const entA = [0, 1, 2].map((c) => entropy(channelOf(A, w, h, c)).toFixed(4)).join(" / ");
+  const corr = [0, 1, 2].map((c) => neighborCorr(channelOf(B, w, h, c), w, h).toFixed(4)).join(" / ");
+  const corrA = [0, 1, 2].map((c) => neighborCorr(channelOf(A, w, h, c), w, h).toFixed(4)).join(" / ");
+  rows.push(["熵 R/G/B", entA + "  →  " + ent]);
+  rows.push(["左邻相关 R/G/B", corrA + "  →  " + corr]);
+  rows.push(["平均绝对误差", (mae / (w * h * 3)).toFixed(2) + " / 255"]);
+  rows.push(["与原图相同像素", (100 * same / (w * h)).toFixed(2) + " %"]);
+  return rows;
+}
+
+/* ---------- 10. 导出（供测试用） ---------- */
+globalThis.COSMIX_CORE = {
+  sha256, hmacSha256, pbkdf2HmacSha256, scrypt, blake2b,
+  deriveMaster, subkey, sumOf, keystream, keystreamV2, diffEngine, diffusionKeys,
+  cosinePermutation, cosineScatter, permutationParams, permutationEngine,
+  mixImage, restoreImage, decodePNG, encodePNG, packHeader,
+  hexOf, fromHex, analyse, MAGIC, VERSION, DEFAULT_ROUNDS, DEFAULT_VARIANT,
+};
+
+/* =====================================================================
+ * 11. UI
+ * ===================================================================== */
+if (typeof document !== "undefined") {
+  const $ = (id) => document.getElementById(id);
+  const logEl = $("log");
+  const state = { file: null, w: 0, h: 0, rgba: null, texts: {}, header: null, result: null,
+                  name: "image", extras: [], srcFormat: "png" };
+
+  const log = (msg, kind) => {
+    const line = document.createElement("div");
+    line.textContent = msg;
+    if (kind === "ok") line.style.color = "var(--ok)";
+    if (kind === "err") line.style.color = "var(--err)";
+    if (kind === "warn") line.style.color = "var(--warn)";
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+  const clearLog = () => { logEl.innerHTML = ""; };
+
+  const drawTo = (canvas, rgba, w, h) => {
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    const img = ctx.createImageData(w, h);
+    img.data.set(rgba);
+    ctx.putImageData(img, 0, 0);
+  };
+
+  const setTag = (el, text, kind) => {
+    el.textContent = text;
+    el.className = "pill" + (kind ? " " + kind : "");
+  };
+
+  const showMetrics = (rows) => {
+    const t = $("metrics");
+    t.innerHTML = "<tr><th>指标</th><th>值</th></tr>";
+    for (const [k, v] of rows) {
+      const tr = document.createElement("tr");
+      const a = document.createElement("td"); a.textContent = k;
+      const b = document.createElement("td"); b.textContent = v;
+      tr.appendChild(a); tr.appendChild(b); t.appendChild(tr);
+    }
+  };
+
+  const refreshButtons = () => {
+    const has = !!state.rgba;
+    $("btnMix").disabled = !has;
+    $("btnRestore").disabled = !has;
+    $("btnDetect").disabled = !has;
+  };
+
+  const variantOf = () => ($("variant").value || DEFAULT_VARIANT).trim() || DEFAULT_VARIANT;
+
+  const isPNG = (b) => b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47;
+
+  /* PNG 走纯 JS 解码（保留元数据、不过 canvas）；其它格式交给浏览器解码成 RGBA。 */
+  async function decodeImage(buf, file) {
+    if (isPNG(buf)) { const dec = await decodePNG(buf); dec.format = "png"; return dec; }
+    const bmp = await createImageBitmap(new Blob([buf], { type: file.type || "application/octet-stream" }));
+    const w = bmp.width, h = bmp.height;
+    const cv = (typeof OffscreenCanvas !== "undefined") ? new OffscreenCanvas(w, h)
+      : Object.assign(document.createElement("canvas"), { width: w, height: h });
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(bmp, 0, 0);
+    const data = ctx.getImageData(0, 0, w, h);
+    if (bmp.close) bmp.close();
+    return { rgba: new Uint8Array(data.data), w, h, texts: {}, extras: [],
+             format: (file.name.split(".").pop() || "img").toLowerCase() };
+  }
+
+  const load = async (file) => {
+    clearLog();
+    $("dlWrap").innerHTML = "";
+    state.file = file; state.name = file.name.replace(/\.png$/i, "").replace(/\.cosmix$/i, "");
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      const dec = await decodeImage(buf, file);
+      state.rgba = dec.rgba; state.w = dec.w; state.h = dec.h;
+      state.texts = dec.texts || {}; state.extras = dec.extras || []; state.srcFormat = dec.format;
+      state.header = state.texts["cosmix"] ? JSON.parse(state.texts["cosmix"]) : null;
+      $("fileInfo").innerHTML = "<b>" + file.name + "</b> · " + dec.format.toUpperCase() + " · " +
+        dec.w + "×" + dec.h + " · " + (file.size / 1024).toFixed(0) + " KB";
+      if (dec.format !== "png") log("非 PNG 输入：已由浏览器解码成 RGBA（" + dec.w + "×" + dec.h + "），元信息无法保留。", "warn");
+      drawTo($("cvA"), dec.rgba, dec.w, dec.h);
+      $("cvB").width = 0; $("cvB").height = 0;
+      setTag($("tagA"), state.header ? "已混淆" : "原图", state.header ? "warn" : "");
+      setTag($("tagB"), "—", "");
+      showMetrics([["提示", "执行混淆或还原后显示"] ]);
+      $("header").value = state.header ? JSON.stringify(state.header) : "";
+      if (state.header && state.header.salt) {
+        log("这是需要口令的旧版 v1 文件，请用备份版本还原。", "err");
+      } else if (state.header) {
+        $("variant").value = state.header.variant || DEFAULT_VARIANT;
+        if (state.header.rounds) $("rounds").value = state.header.rounds;
+        log("检测到 COSMIX 头信息：变体 " + state.header.variant + "，轮数 " + state.header.rounds +
+            "，alpha=" + state.header.alpha + "，指纹 " + state.header.sum, "warn");
+      } else {
+        log("未检测到 COSMIX 头信息（普通图片，或元数据被剥掉）。");
+      }
+    } catch (err) {
+      log("读取失败：" + err.message, "err");
+    }
+    refreshButtons();
+  };
+
+  /* 事件绑定：单个元素缺失不能拖垮其余监听（v2 曾因 $("pass") 为 null 导致全部按钮失灵） */
+  const bind = (id, ev, fn) => {
+    const el = $(id);
+    if (!el) { console.error("缺少元素：" + id); return; }
+    el.addEventListener(ev, fn);
+  };
+
+  bind("drop", "click", () => $("file").click());
+  bind("drop", "dragover", (e) => { e.preventDefault(); $("drop").classList.add("hot"); });
+  bind("drop", "dragleave", () => $("drop").classList.remove("hot"));
+  bind("drop", "drop", (e) => {
+    e.preventDefault(); $("drop").classList.remove("hot");
+    if (e.dataTransfer.files.length) load(e.dataTransfer.files[0]);
+  });
+  bind("file", "change", (e) => { if (e.target.files.length) load(e.target.files[0]); });
+  window.addEventListener("error", (e) => log("脚本错误：" + (e.message || e.error), "err"));
+
+  const busy = (on) => {
+    $("btnMix").disabled = on; $("btnRestore").disabled = on; $("btnDetect").disabled = on;
+    document.body.style.cursor = on ? "progress" : "";
+  };
+
+  $("btnDetect").addEventListener("click", () => {
+    if (state.header) {
+      $("header").value = JSON.stringify(state.header, null, 2);
+      log("头信息：" + JSON.stringify(state.header), "ok");
+    } else log("这张图没有 COSMIX 头信息。", "warn");
+  });
+
+  $("btnMix").addEventListener("click", async () => {
+    if (!state.rgba) return;
+    busy(true);
+    const t0 = performance.now();
+    try {
+      const opts = {
+        rounds: parseInt($("rounds").value, 10) || DEFAULT_ROUNDS,
+        variant: variantOf(),
+      };
+      log("混淆中… 像素 " + (state.w * state.h) + "，轮数 " + opts.rounds + "，变体 " + opts.variant);
+      $("prog").classList.remove("hidden"); $("prog").value = 0;
+      opts.onProgress = (p) => { $("prog").value = p; };
+      opts.srcFormat = state.srcFormat || "png";
+      opts.meta = (state.extras || []).map((c) => c.type);
+      await new Promise((r) => setTimeout(r, 16));
+      const res = await mixImage(state.rgba, state.w, state.h, opts);
+      const png = await encodePNG(res.rgba, state.w, state.h, { cosmix: packHeader(res.header) }, state.extras);
+      $("prog").classList.add("hidden");
+      const ms = Math.round(performance.now() - t0);
+      drawTo($("cvB"), res.rgba, state.w, state.h);
+      setTag($("tagA"), "原图", "");
+      setTag($("tagB"), "已混淆 · " + ms + " ms", "ok");
+      showMetrics(analyse(state.rgba, res.rgba, state.w, state.h));
+      $("header").value = JSON.stringify(res.header, null, 2);
+      state.result = { png, header: res.header, rgba: res.rgba };
+      // 混淆后把结果当作当前图像，便于紧接着点"还原"验证可逆性
+      state.rgba = res.rgba; state.header = res.header; state.texts = { cosmix: packHeader(res.header) };
+      const blob = new Blob([png], { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      $("dlWrap").innerHTML = "";
+      const a = document.createElement("a");
+      a.className = "dl";
+      a.href = url;
+      a.download = state.name + ".cosmix.png";
+      a.textContent = "下载 " + a.download + "（" + (png.length / 1024).toFixed(0) + " KB）";
+      $("dlWrap").appendChild(a);
+      log("完成：" + a.download + "，变体 " + res.header.variant + "，轮数 " + res.header.rounds +
+          "，指纹 " + res.header.sum, "ok");
+    } catch (err) {
+      log("混淆失败：" + err.message, "err");
+      console.error(err);
+    }
+    busy(false);
+  });
+
+  $("btnRestore").addEventListener("click", async () => {
+    if (!state.rgba) return;
+    busy(true);
+    const t0 = performance.now();
+    try {
+      const opts = {
+        header: state.header,
+        rounds: state.header ? null : (parseInt($("rounds").value, 10) || null),
+        variant: state.header ? null : variantOf(),
+      };
+      log("还原中…");
+      $("prog").classList.remove("hidden"); $("prog").value = 0;
+      opts.onProgress = (p) => { $("prog").value = p; };
+      await new Promise((r) => setTimeout(r, 16));
+      const res = await restoreImage(state.rgba, state.w, state.h, opts);
+      const png = await encodePNG(res.rgba, state.w, state.h, { "cosmix-restored": '{"v":3}' }, state.extras);
+      $("prog").classList.add("hidden");
+      const ms = Math.round(performance.now() - t0);
+      drawTo($("cvB"), res.rgba, state.w, state.h);
+      setTag($("tagB"), "已还原 · " + ms + " ms", "ok");
+      const rows = [];
+      rows.push(["指纹校验", res.verified === null ? "无元数据，跳过" : (res.verified ? "通过" : "失败")]);
+      if (!res.fromMetadata) rows.push(["参数来源", "默认（变体 " + res.variant + "，" + res.rounds + " 轮）"]);
+      rows.push(["尺寸", state.w + "×" + state.h]);
+      rows.push(["耗时", ms + " ms"]);
+      showMetrics(rows);
+      const blob = new Blob([png], { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      $("dlWrap").innerHTML = "";
+      const a = document.createElement("a");
+      a.className = "dl";
+      a.href = url;
+      a.download = state.name + ".restored.png";
+      a.textContent = "下载 " + a.download + "（" + (png.length / 1024).toFixed(0) + " KB）";
+      $("dlWrap").appendChild(a);
+      log("还原完成：" + a.download + "，" + ms + " ms", "ok");
+    } catch (err) {
+      log("还原失败：" + err.message, "err");
+      console.error(err);
+    }
+    busy(false);
+  });
+
+  $("btnClear").addEventListener("click", () => {
+    state.file = null; state.rgba = null; state.header = null; state.result = null;
+    $("fileInfo").textContent = "尚未选择文件";
+    $("dlWrap").innerHTML = "";
+    $("header").value = "";
+    $("cvA").width = 0; $("cvA").height = 0;
+    $("cvB").width = 0; $("cvB").height = 0;
+    setTag($("tagA"), "—", ""); setTag($("tagB"), "—", "");
+    showMetrics([["提示", "选择图片并执行后显示"]]);
+    clearLog(); log("已清空。");
+    refreshButtons();
+  });
+
+}
+</script>
+</body>
+</html>
